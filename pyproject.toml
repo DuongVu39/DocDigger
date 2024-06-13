@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "docdigger"
+version = "0.1.0"
+description = ""
+authors = ["Duong Vu <dqvu.ubc@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+langchain-nomic = "^0.1.2"
+langchain-community = "^0.2.4"
+tiktoken = "^0.7.0"
+langchainhub = "^0.1.18"
+langchain = "^0.2.3"
+chromadb = "^0.5.0"
+langgraph = "^0.0.66"
+tavily-python = "^0.3.3"
+gpt4all = "^2.7.0"
+firecrawl-py = "^0.0.14"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
