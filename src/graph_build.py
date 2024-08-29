@@ -1,4 +1,5 @@
 from langgraph.graph import END, StateGraph
+from langgraph.checkpoint import MemorySaver
 from langgraph_process import *
 from pprint import pprint
 
@@ -39,7 +40,7 @@ def main():
         },
     )
 
-    app = workflow.compiled()
+    app = workflow.compile()
 
     # test without interface
     input = {"question": "What are the types of agent memory?"}

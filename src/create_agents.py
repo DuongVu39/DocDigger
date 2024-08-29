@@ -3,7 +3,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 
 
-def initiate_chat_ollama(local_llm="llama3"):
+def initiate_chat_ollama(local_llm="llama3.1"):
     """
     Initiates the ChatOllama object
 
@@ -31,10 +31,10 @@ def create_retrieval_grader_agent(base_llm: ChatOllama):
         Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question. \n
         Provide the binary score as a JSON with a single key 'score' and no premable or explanation.
          <|eot_id|><|start_header_id|>user<|end_header_id|>
-        Here is the retrieved document: \n\n {document} \n\n
+        Here is the retrieved document: \n\n {documents} \n\n
         Here is the user question: {question} \n <|eot_id|><|start_header_id|>assistant<|end_header_id|>
         """,
-        input_variables=["question", "document"],
+        input_variables=["question", "documents"],
     )
 
     # pipe prompt into base llm and then parse the output
@@ -59,7 +59,7 @@ def create_generate_agent(base_llm: ChatOllama):
         Context: {context} 
         Answer: <|eot_id|><|start_header_id|>assistant<|end_header_id|>
         """,
-        input_variables=["question", "document"],
+        input_variables=["question", "context"],
     )
 
     # pipe prompt into base llm and then parse the output
@@ -88,7 +88,7 @@ def create_hallucination_grader_agent(base_llm):
     \n ------- \n
     Here is the answer: {generation}  <|eot_id|><|start_header_id|>assistant<|end_header_id|>
     """,
-        input_variables=["document", "generation"],
+        input_variables=["documents", "generation"],
     )
 
     # pipe prompt into base llm and then parse the output

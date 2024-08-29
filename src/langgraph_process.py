@@ -30,7 +30,6 @@ def retrieve(state):
 
     Args:
         state: GraphState object
-        retriever: Vector store retriever
 
     Returns:
         str: The answer to the question
@@ -42,7 +41,7 @@ def retrieve(state):
     # retrieving answer
     logger.info("Retrieving answer from the vector store")
     question = state["question"]
-    documents = retriever.invoke(question)
+    documents = retriever.invoke(state)
     return {"documents": documents, "question": question}
 
 
@@ -92,8 +91,10 @@ def grade_documents(state):
     filtered_docs = []
     web_search = "No"
     for doc in documents:
+        import pdb
+        pdb.set_trace()
         score = retrieval_grader.invoke(
-            {"question": question, "document": doc.page_content}
+            {"question": question, "documents": doc.page_content}
         )
         grade = score["score"]  # Score the document
 
