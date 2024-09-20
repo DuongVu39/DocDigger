@@ -17,6 +17,7 @@ langgraph = "^0.0.66"
 tavily-python = "^0.3.3"
 gpt4all = "^2.7.0"
 firecrawl-py = "^0.0.14"
+jupyterlab = "^4.2.5"
 
 
 [build-system]
