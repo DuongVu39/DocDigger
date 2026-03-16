@@ -34,9 +34,9 @@ def main():
         "generate",
         check_hallucinating,
         {
-            "not supported": "generate",
-            "useful": END,
-            "not useful": "websearch",
+            "supported_and_useful": END,
+            "supported_but_not_useful": "websearch",
+            "unsupported": "websearch",
         },
     )
 

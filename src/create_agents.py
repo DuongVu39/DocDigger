@@ -52,9 +52,10 @@ def create_generate_agent(base_llm: ChatOllama):
 
     """
     prompt = PromptTemplate(
-        template="""<|begin_of_text|><|start_header_id|>system<|end_header_id|> You are an assistant for question-answering tasks. 
-        Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know. 
-        Use three sentences maximum and keep the answer concise <|eot_id|><|start_header_id|>user<|end_header_id|>
+        template="""<|begin_of_text|><|start_header_id|>system<|end_header_id|> You are an assistant for answering questions about HOA / strata documents. 
+        Use the following pieces of retrieved context to answer the question. If you don't know the answer based on the provided documents, clearly say that you don't know. 
+        When possible, cite document names, section numbers, and dates (e.g. "According to the 2022 bylaws, section 3.2, ..."). 
+        Use three sentences maximum and keep the answer concise. <|eot_id|><|start_header_id|>user<|end_header_id|>
         Question: {question} 
         Context: {context} 
         Answer: <|eot_id|><|start_header_id|>assistant<|end_header_id|>

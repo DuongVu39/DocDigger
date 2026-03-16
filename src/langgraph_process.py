@@ -1,8 +1,20 @@
 from typing_extensions import TypedDict
 import logging
+import os
+
+import yaml
 from langchain_core.documents import Document
 from langchain_community.tools.tavily_search import TavilySearchResults
-from create_agents import *
+
+from create_agents import (
+    initiate_chat_ollama,
+    create_retrieval_grader_agent,
+    create_generate_agent,
+    create_hallucination_grader_agent,
+    create_answer_grader_agent,
+    create_question_router_agent,
+)
+from data_manipulation import load_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +33,33 @@ class GraphState(TypedDict):
     question: str
     generation: str
     web_search: str
-    documents: list[str]
+    documents: list[Document]
+
+
+def _load_retriever():
+    """
+    Load the persisted HOA vector store as a retriever, if available.
+    """
+    config_path = os.getenv("HOA_INDEX_CONFIG", "conf/local/hoa_index.yml")
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        store_name = cfg["vector_store"]["store_name"]
+        index_name = cfg["vector_store"]["index_name"]
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.warning("Could not load HOA index config from %s: %s", config_path, exc)
+        return None
+
+    try:
+        vector_store = load_vector_store(store_name, index_name)
+        logger.info("Loaded HOA retriever from %s", config_path)
+        return vector_store.as_retriever()
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error("Failed to load HOA vector store: %s", exc)
+        return None
+
+
+RETRIEVER = _load_retriever()
 
 
 def retrieve(state):
@@ -32,16 +70,17 @@ def retrieve(state):
         state: GraphState object
 
     Returns:
-        str: The answer to the question
+        Updated state containing retrieved `documents`.
     """
-    # initiate retriever agent
-    base_llm = initiate_chat_ollama()
-    retriever = create_retrieval_grader_agent(base_llm)
-
-    # retrieving answer
     logger.info("Retrieving answer from the vector store")
     question = state["question"]
-    documents = retriever.invoke(state)
+
+    if RETRIEVER is None:
+        logger.warning("No retriever is available; returning empty document list.")
+        documents: list[Document] = []
+    else:
+        documents = RETRIEVER.get_relevant_documents(question)
+
     return {"documents": documents, "question": question}
 
 
@@ -55,7 +94,6 @@ def generate(state):
     Returns:
 
     """
-    # initiate generate agent
     base_llm = initiate_chat_ollama()
     generate_agent = create_generate_agent(base_llm)
 
@@ -79,20 +117,18 @@ def grade_documents(state):
     Returns:
 
     """
-    # initiate grader agent
-    base_llm = initiate_chat_ollama()
-    retrieval_grader = create_retrieval_grader_agent(base_llm)
-
     logger.info("Checking the relevance of the retrieved documents to the question")
     question = state["question"]
     documents = state["documents"]
+
+    # initiate grader agent
+    base_llm = initiate_chat_ollama()
+    retrieval_grader = create_retrieval_grader_agent(base_llm)
 
     # Score each retrieved document
     filtered_docs = []
     web_search = "No"
     for doc in documents:
-        import pdb
-        pdb.set_trace()
         score = retrieval_grader.invoke(
             {"question": question, "documents": doc.page_content}
         )
@@ -149,20 +185,24 @@ def route_question(state):
     Returns:
 
     """
-    # initiate grader agent
-    base_llm = initiate_chat_ollama()
-    question_router = create_question_router_agent(base_llm)
-
     logger.info("Routing the question")
     question = state["question"]
+
+    base_llm = initiate_chat_ollama()
+    question_router = create_question_router_agent(base_llm)
     source = question_router.invoke({"question": question})
 
-    if source["datasource"] == "websearch":
+    datasource = source.get("datasource")
+    if datasource == "web_search":
         logger.info("Routing to web search")
         return "websearch"
-    else:
+
+    if datasource == "vectorstore":
         logger.info("Routing to retrieve from vector store")
         return "vectorstore"
+
+    logger.info("Unknown datasource '%s', defaulting to vectorstore", datasource)
+    return "vectorstore"
 
 
 def decide_to_generate(state):
@@ -197,34 +237,38 @@ def check_hallucinating(state):
     Returns:
 
     """
-    # initiate grader agent
-    base_llm = initiate_chat_ollama()
-    hallucination_checker = create_hallucination_grader_agent(base_llm)
-
-    logger.info("Checking for hallucination")
+    logger.info("Checking for hallucination and usefulness")
     question = state["question"]
     documents = state["documents"]
     generation = state["generation"]
 
+    base_llm = initiate_chat_ollama()
+    hallucination_checker = create_hallucination_grader_agent(base_llm)
+    answer_grader = create_answer_grader_agent(base_llm)
+
+    # 1) Check grounding
     score = hallucination_checker.invoke(
         {"documents": documents, "generation": generation}
     )
-    grade = score["score"]
+    grade = score["score"].lower()
 
-    if grade.lower() == "yes":
-        logger.info("GROUNDED IN DOCUMENT: Generation is based on the retrieved documents")
-        # check if the generation is relevant to the question
-        logger.info("Checking if the generation is relevant to the question")
-        score = hallucination_checker.invoke(
-            {"question": question, "generation": generation}
+    if grade != "yes":
+        logger.info(
+            "HALLUCINATION: Generation is not grounded in the documents, falling back."
         )
-        grade = score["score"]
-        if grade.lower() == "yes":
-            logger.info("NOT HALLUCINATING: Generation is relevant to the question")
-            return "useful"
-        else:
-            logger.info("HALLUCINATION: Generation is not relevant to the question")
-            return "not useful"
-    else:
-        logger.info("HALLUCINATION: Generation is not grounded in the documents, RE-TRY")
-        return "not-supported"
+        return "unsupported"
+
+    logger.info("GROUNDED IN DOCUMENT: Generation is based on the retrieved documents")
+
+    # 2) Check usefulness
+    logger.info("Checking if the generation is useful for the question")
+    score = answer_grader.invoke({"question": question, "generation": generation})
+    grade = score["score"].lower()
+
+    if grade == "yes":
+        logger.info("Generation is grounded and useful")
+        return "supported_and_useful"
+
+    logger.info("Generation is grounded but not useful enough")
+    return "supported_but_not_useful"
+
