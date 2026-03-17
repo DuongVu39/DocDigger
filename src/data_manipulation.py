@@ -3,12 +3,10 @@ import logging
 import os
 import pickle
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 import pandas as pd
-from langchain.vectorstores import faiss
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
-from langchain_community.vectorstores import FAISS
 
 from utils import text_splitter, create_text_embedding
 
@@ -20,6 +18,14 @@ ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md"}
 
 
 def _infer_doc_type(path: Path) -> str:
+    """Classify a document based on its filename. 
+    Currently only supports HOA documents. Returns:
+        - "bylaw" for bylaws
+        - "minutes" for meeting minutes
+        - "notice" for notices
+        - "financial" for financial statements
+        - "other" for other documents
+    """
     name = path.name.lower()
     if "bylaw" in name or "by-law" in name:
         return "bylaw"
@@ -134,10 +140,15 @@ def create_vector_store(df: pd.DataFrame, store_name: str, index_name: str) -> N
 
     hf = create_text_embedding()
 
+    # Import native deps lazily to avoid import-time crashes in environments
+    # where FAISS isn't available/compatible.
+    import faiss
+    from langchain_community.vectorstores import FAISS
+
     if os.path.exists(f"{store_name}.pkl") and os.path.exists(index_name):
         logger.info("Existing vector store found. Reloading from disk.")
         with open(f"{store_name}.pkl", "rb") as f:
-            vector_store: FAISS = pickle.load(f)
+            vector_store = pickle.load(f)
         vector_store.index = faiss.read_index(index_name)
     else:
         logger.info("Creating new FAISS vector store.")
@@ -158,10 +169,13 @@ def create_vector_store(df: pd.DataFrame, store_name: str, index_name: str) -> N
     )
 
 
-def load_vector_store(store_name: str, index_name: str) -> FAISS:
+def load_vector_store(store_name: str, index_name: str) -> Any:
     """
     Load a persisted FAISS vector store from disk.
     """
+    import faiss
+    from langchain_community.vectorstores import FAISS
+
     if not os.path.exists(f"{store_name}.pkl"):
         raise FileNotFoundError(f"Vector store pickle not found: {store_name}.pkl")
     if not os.path.exists(index_name):
