@@ -1,5 +1,5 @@
 ## What
-What is this PR?
+<!--- Describe your changes in detail -->
 
 - [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
